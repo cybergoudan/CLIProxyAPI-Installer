@@ -21,56 +21,30 @@ setup_env
 # --- Go 环境检查与自动安装 ---
 ensure_go() {
     if command -v go &> /dev/null; then
-        echo -e "${GREEN}检测到 Go 已安装: $(go version)${PLAIN}"
         return 0
     fi
-
-    echo -e "${YELLOW}未检测到 Go 环境，准备自动安装...${PLAIN}"
-    
-    # 检查本地是否有备份
-    if [ -f "$GO_DIST_DIR/go/bin/go" ]; then
-        echo -e "${YELLOW}发现本地备份，正在启用...${PLAIN}"
-    else
-        echo -e "${YELLOW}正在从官方下载 Go 1.22.1 (linux-amd64)...${PLAIN}"
-        mkdir -p "$GO_DIST_DIR"
-        curl -L https://go.dev/dl/go1.22.1.linux-amd64.tar.gz -o /tmp/go.tar.gz
-        tar -C "$GO_DIST_DIR" -xzf /tmp/go.tar.gz
-        rm -f /tmp/go.tar.gz
-    fi
-
-    # 写入环境变量
-    if ! grep -q "$GO_DIST_DIR/go/bin" /root/.bashrc; then
-        echo "export PATH=\$PATH:$GO_DIST_DIR/go/bin" >> /root/.bashrc
-    fi
+    echo -e "${YELLOW}未检测到 Go 环境，正在安装...${PLAIN}"
+    mkdir -p "$GO_DIST_DIR"
+    curl -L https://go.dev/dl/go1.22.1.linux-amd64.tar.gz -o /tmp/go.tar.gz
+    tar -C "$GO_DIST_DIR" -xzf /tmp/go.tar.gz
+    rm -f /tmp/go.tar.gz
     setup_env
-    
-    if command -v go &> /dev/null; then
-        echo -e "${GREEN}Go 安装成功: $(go version)${PLAIN}"
-    else
-        echo -e "${RED}Go 安装失败，请手动检查网络。${PLAIN}"
-        exit 1
-    fi
 }
 
 # --- 功能函数 ---
 
 do_uninstall() {
-    echo -e "${YELLOW}正在卸载 CLIProxyAPI...${PLAIN}"
+    echo -e "${YELLOW}正在卸载...${PLAIN}"
     pkill cliproxy 2>/dev/null
     rm -rf "$WORKDIR"
     rm -f "$CLI_CMD"
-    sed -i '/export PATH=\$PATH:\/root\/bin/d' /root/.bashrc
     echo -e "${GREEN}卸载完成！${PLAIN}"
     exit 0
 }
 
 do_update() {
     ensure_go
-    if [ ! -d "$WORKDIR" ]; then
-        echo -e "${RED}错误: 未检测到已安装的项目。${PLAIN}"
-        exit 1
-    fi
-    echo -e "${YELLOW}正在更新 CLIProxyAPI...${PLAIN}"
+    if [ ! -d "$WORKDIR" ]; then echo -e "${RED}错误: 未安装${PLAIN}"; exit 1; fi
     cd "$WORKDIR" || exit
     git pull && go build -o cliproxy ./cmd/server/main.go
     echo -e "${GREEN}更新成功！${PLAIN}"
@@ -80,8 +54,7 @@ do_update() {
 do_install() {
     ensure_go
 
-    echo -e "${BLUE}请输入配置信息 (直接回车使用默认值):${PLAIN}"
-    
+    echo -e "${BLUE}请输入配置信息:${PLAIN}"
     echo -n "1. 监听端口 [默认 28391]: "
     read PORT < /dev/tty
     PORT=${PORT:-28391}
@@ -94,14 +67,35 @@ do_install() {
     read AUTH_DIR < /dev/tty
     AUTH_DIR=${AUTH_DIR:-$WORKDIR/auths}
 
-    echo -e "${YELLOW}开始克隆并编译...${PLAIN}"
+    # 克隆逻辑（增加重试和浅克隆）
+    echo -e "${YELLOW}正在克隆代码 (GitHub)...${PLAIN}"
     if [ -d "$WORKDIR" ]; then
         cd "$WORKDIR" && git pull
     else
-        git clone https://github.com/router-for-me/CLIProxyAPI.git "$WORKDIR"
-        cd "$WORKDIR"
+        # 尝试最多 3 次
+        MAX_RETRIES=3
+        COUNT=0
+        SUCCESS=false
+        while [ $COUNT -lt $MAX_RETRIES ]; do
+            COUNT=$((COUNT + 1))
+            echo -e "${YELLOW}尝试克隆 ($COUNT/$MAX_RETRIES)...${PLAIN}"
+            git clone --depth 1 https://github.com/router-for-me/CLIProxyAPI.git "$WORKDIR"
+            if [ $? -eq 0 ]; then
+                SUCCESS=true
+                break
+            fi
+            echo -e "${RED}克隆失败，3秒后重试...${PLAIN}"
+            sleep 3
+        done
+
+        if [ "$SUCCESS" = false ]; then
+            echo -e "${RED}无法连接 GitHub。请检查网络，或者尝试配置代理后再运行。${PLAIN}"
+            exit 1
+        fi
+        cd "$WORKDIR" || exit
     fi
 
+    echo -e "${YELLOW}正在编译...${PLAIN}"
     go build -o cliproxy ./cmd/server/main.go
     if [ $? -ne 0 ]; then echo -e "${RED}编译失败${PLAIN}"; exit 1; fi
 
@@ -125,12 +119,12 @@ export PATH=\$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:
 WORKDIR="$WORKDIR"
 cd "\$WORKDIR"
 case "\$1" in
-    start) nohup ./cliproxy -config config.yaml > log.txt 2>&1 & echo "服务已启动" ;;
-    stop) pkill cliproxy && echo "服务已停止" ;;
+    start) nohup ./cliproxy -config config.yaml > log.txt 2>&1 & echo "已启动" ;;
+    stop) pkill cliproxy && echo "已停止" ;;
     status) ps aux | grep "./cliproxy -config config.yaml" | grep -v grep && echo -e "\033[0;32m运行中\033[0m" || echo -e "\033[0;31m未运行\033[0m" ;;
     log) tail -f log.txt ;;
     tui) ./cliproxy -tui ;;
-    update) cd "\$WORKDIR" && git pull && go build -o cliproxy ./cmd/server/main.go && echo "更新成功" ;;
+    update) cd "\$WORKDIR" && git pull && go build -o cliproxy ./cmd/server/main.go && echo "已更新" ;;
     uninstall) pkill cliproxy; rm -rf "\$WORKDIR"; rm -f "\$0"; echo "已卸载" ;;
     *) echo "用法: cli [start|stop|status|log|tui|update|uninstall]" ;;
 esac
@@ -147,7 +141,7 @@ EOF
 # --- 主程序 ---
 clear
 echo -e "${BLUE}==========================================${PLAIN}"
-echo -e "${BLUE}    CLIProxyAPI 自动化管理脚本 (v1.3)     ${PLAIN}"
+echo -e "${BLUE}    CLIProxyAPI 自动化管理脚本 (v1.4)     ${PLAIN}"
 echo -e "${BLUE}==========================================${PLAIN}"
 echo "1) 安装 (Install)"
 echo "2) 更新 (Update)"
