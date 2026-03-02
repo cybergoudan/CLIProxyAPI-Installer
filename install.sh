@@ -11,8 +11,7 @@ WORKDIR="/root/CLIProxyAPI"
 BIN_DIR="/root/bin"
 CLI_CMD="$BIN_DIR/cli"
 GO_DIST_DIR="/root/go_dist"
-MIRROR_URL="https://ghfast.top/https://github.com/router-for-me/CLIProxyAPI.git"
-ORIGIN_URL="https://github.com/router-for-me/CLIProxyAPI.git"
+REPO_URL="https://github.com/router-for-me/CLIProxyAPI.git"
 
 # --- 环境变量初始化 ---
 setup_env() {
@@ -22,13 +21,14 @@ setup_env
 
 # --- 系统依赖检查与安装 ---
 ensure_deps() {
+    echo -e "${YELLOW}正在检查系统基础依赖...${PLAIN}"
     DEPS=("git" "curl" "tar" "ca-certificates")
     MISSING_DEPS=()
     for dep in "${DEPS[@]}"; do
         if ! command -v "$dep" &> /dev/null; then MISSING_DEPS+=("$dep"); fi
     done
     if [ ${#MISSING_DEPS[@]} -eq 0 ]; then return 0; fi
-    echo -e "${YELLOW}正在安装依赖: ${MISSING_DEPS[*]}...${PLAIN}"
+    echo -e "${YELLOW}正在尝试安装缺失依赖: ${MISSING_DEPS[*]}...${PLAIN}"
     if command -v apt-get &> /dev/null; then
         apt-get update && apt-get install -y "${MISSING_DEPS[@]}"
     elif command -v dnf &> /dev/null; then
@@ -41,7 +41,7 @@ ensure_deps() {
 # --- Go 环境检查与自动安装 ---
 ensure_go() {
     if command -v go &> /dev/null; then return 0; fi
-    echo -e "${YELLOW}正在安装 Go 1.22.1...${PLAIN}"
+    echo -e "${YELLOW}正在自动安装 Go 1.22.1...${PLAIN}"
     mkdir -p "$GO_DIST_DIR"
     curl -L https://go.dev/dl/go1.22.1.linux-amd64.tar.gz -o /tmp/go.tar.gz
     tar -C "$GO_DIST_DIR" -xzf /tmp/go.tar.gz
@@ -63,8 +63,9 @@ do_uninstall() {
 do_update() {
     ensure_deps
     ensure_go
-    if [ ! -d "$WORKDIR" ]; then echo -e "${RED}错误: 未安装${PLAIN}"; exit 1; fi
+    if [ ! -d "$WORKDIR" ]; then echo -e "${RED}错误: 未检测到安装${PLAIN}"; exit 1; fi
     cd "$WORKDIR" || exit
+    echo -e "${YELLOW}正在从官方仓库拉取更新...${PLAIN}"
     git pull && go build -o cliproxy ./cmd/server/main.go
     echo -e "${GREEN}更新成功！${PLAIN}"
     exit 0
@@ -87,27 +88,21 @@ do_install() {
     read AUTH_DIR < /dev/tty
     AUTH_DIR=${AUTH_DIR:-$WORKDIR/auths}
 
-    echo -e "${YELLOW}正在克隆代码...${PLAIN}"
+    echo -e "${YELLOW}正在从官方 GitHub 克隆代码...${PLAIN}"
     if [ -d "$WORKDIR" ]; then
         cd "$WORKDIR" && git pull
     else
-        # 尝试原始链接
-        echo -e "${YELLOW}尝试从 GitHub 克隆...${PLAIN}"
-        if git clone --depth 1 "$ORIGIN_URL" "$WORKDIR"; then
-            echo -e "${GREEN}克隆成功 (GitHub)${PLAIN}"
+        # 官方线路浅克隆
+        if git clone --depth 1 "$REPO_URL" "$WORKDIR"; then
+            echo -e "${GREEN}克隆成功 (官方线路)${PLAIN}"
         else
-            echo -e "${YELLOW}GitHub 连接失败，正在尝试镜像加速 (ghfast.top)...${PLAIN}"
-            if git clone --depth 1 "$MIRROR_URL" "$WORKDIR"; then
-                echo -e "${GREEN}克隆成功 (镜像加速)${PLAIN}"
-            else
-                echo -e "${RED}克隆失败。请检查您的网络连接。${PLAIN}"
-                exit 1
-            fi
+            echo -e "${RED}官方线路连接失败。请检查您的网络设置（已尝试 1 次）。${PLAIN}"
+            exit 1
         fi
         cd "$WORKDIR" || exit
     fi
 
-    echo -e "${YELLOW}正在编译...${PLAIN}"
+    echo -e "${YELLOW}正在编译程序...${PLAIN}"
     go build -o cliproxy ./cmd/server/main.go
     if [ $? -ne 0 ]; then echo -e "${RED}编译失败${PLAIN}"; exit 1; fi
 
@@ -131,12 +126,12 @@ export PATH=\$PATH:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:
 WORKDIR="$WORKDIR"
 cd "\$WORKDIR"
 case "\$1" in
-    start) nohup ./cliproxy -config config.yaml > log.txt 2>&1 & echo "已启动" ;;
-    stop) pkill cliproxy && echo "已停止" ;;
+    start) nohup ./cliproxy -config config.yaml > log.txt 2>&1 & echo "服务已启动" ;;
+    stop) pkill cliproxy && echo "服务已停止" ;;
     status) ps aux | grep "./cliproxy -config config.yaml" | grep -v grep && echo -e "\033[0;32m运行中\033[0m" || echo -e "\033[0;31m未运行\033[0m" ;;
     log) tail -f log.txt ;;
     tui) ./cliproxy -tui ;;
-    update) cd "\$WORKDIR" && git pull && go build -o cliproxy ./cmd/server/main.go && echo "已更新" ;;
+    update) cd "\$WORKDIR" && git pull && go build -o cliproxy ./cmd/server/main.go && echo "更新成功" ;;
     uninstall) pkill cliproxy; rm -rf "\$WORKDIR"; rm -f "\$0"; echo "已卸载" ;;
     *) echo "用法: cli [start|stop|status|log|tui|update|uninstall]" ;;
 esac
@@ -153,7 +148,7 @@ EOF
 # --- 主程序 ---
 clear
 echo -e "${BLUE}==========================================${PLAIN}"
-echo -e "${BLUE}    CLIProxyAPI 自动化管理脚本 (v1.6)     ${PLAIN}"
+echo -e "${BLUE}    CLIProxyAPI 自动化管理脚本 (v1.7)     ${PLAIN}"
 echo -e "${BLUE}==========================================${PLAIN}"
 echo "1) 安装 (Install)"
 echo "2) 更新 (Update)"
