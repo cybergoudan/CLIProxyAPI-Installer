@@ -11,6 +11,8 @@ WORKDIR="/root/CLIProxyAPI"
 BIN_DIR="/root/bin"
 CLI_CMD="$BIN_DIR/cli"
 GO_DIST_DIR="/root/go_dist"
+MIRROR_URL="https://ghfast.top/https://github.com/router-for-me/CLIProxyAPI.git"
+ORIGIN_URL="https://github.com/router-for-me/CLIProxyAPI.git"
 
 # --- 环境变量初始化 ---
 setup_env() {
@@ -20,42 +22,26 @@ setup_env
 
 # --- 系统依赖检查与安装 ---
 ensure_deps() {
-    echo -e "${YELLOW}正在检查系统基础依赖...${PLAIN}"
-    
     DEPS=("git" "curl" "tar" "ca-certificates")
     MISSING_DEPS=()
-    
     for dep in "${DEPS[@]}"; do
-        if ! command -v "$dep" &> /dev/null; then
-            MISSING_DEPS+=("$dep")
-        fi
+        if ! command -v "$dep" &> /dev/null; then MISSING_DEPS+=("$dep"); fi
     done
-
-    if [ ${#MISSING_DEPS[@]} -eq 0 ]; then
-        echo -e "${GREEN}系统依赖已就绪。${PLAIN}"
-        return 0
-    fi
-
-    echo -e "${YELLOW}缺少依赖: ${MISSING_DEPS[*]}. 正在尝试自动安装...${PLAIN}"
-    
+    if [ ${#MISSING_DEPS[@]} -eq 0 ]; then return 0; fi
+    echo -e "${YELLOW}正在安装依赖: ${MISSING_DEPS[*]}...${PLAIN}"
     if command -v apt-get &> /dev/null; then
         apt-get update && apt-get install -y "${MISSING_DEPS[@]}"
     elif command -v dnf &> /dev/null; then
         dnf install -y "${MISSING_DEPS[@]}"
     elif command -v yum &> /dev/null; then
         yum install -y "${MISSING_DEPS[@]}"
-    else
-        echo -e "${RED}无法识别的包管理器，请手动安装: ${MISSING_DEPS[*]}${PLAIN}"
-        exit 1
     fi
 }
 
 # --- Go 环境检查与自动安装 ---
 ensure_go() {
-    if command -v go &> /dev/null; then
-        return 0
-    fi
-    echo -e "${YELLOW}未检测到 Go 环境，正在安装...${PLAIN}"
+    if command -v go &> /dev/null; then return 0; fi
+    echo -e "${YELLOW}正在安装 Go 1.22.1...${PLAIN}"
     mkdir -p "$GO_DIST_DIR"
     curl -L https://go.dev/dl/go1.22.1.linux-amd64.tar.gz -o /tmp/go.tar.gz
     tar -C "$GO_DIST_DIR" -xzf /tmp/go.tar.gz
@@ -101,28 +87,22 @@ do_install() {
     read AUTH_DIR < /dev/tty
     AUTH_DIR=${AUTH_DIR:-$WORKDIR/auths}
 
-    echo -e "${YELLOW}正在克隆代码 (GitHub)...${PLAIN}"
+    echo -e "${YELLOW}正在克隆代码...${PLAIN}"
     if [ -d "$WORKDIR" ]; then
         cd "$WORKDIR" && git pull
     else
-        MAX_RETRIES=3
-        COUNT=0
-        SUCCESS=false
-        while [ $COUNT -lt $MAX_RETRIES ]; do
-            COUNT=$((COUNT + 1))
-            echo -e "${YELLOW}尝试克隆 ($COUNT/$MAX_RETRIES)...${PLAIN}"
-            git clone --depth 1 https://github.com/router-for-me/CLIProxyAPI.git "$WORKDIR"
-            if [ $? -eq 0 ]; then
-                SUCCESS=true
-                break
+        # 尝试原始链接
+        echo -e "${YELLOW}尝试从 GitHub 克隆...${PLAIN}"
+        if git clone --depth 1 "$ORIGIN_URL" "$WORKDIR"; then
+            echo -e "${GREEN}克隆成功 (GitHub)${PLAIN}"
+        else
+            echo -e "${YELLOW}GitHub 连接失败，正在尝试镜像加速 (ghfast.top)...${PLAIN}"
+            if git clone --depth 1 "$MIRROR_URL" "$WORKDIR"; then
+                echo -e "${GREEN}克隆成功 (镜像加速)${PLAIN}"
+            else
+                echo -e "${RED}克隆失败。请检查您的网络连接。${PLAIN}"
+                exit 1
             fi
-            echo -e "${RED}克隆失败，3秒后重试...${PLAIN}"
-            sleep 3
-        done
-
-        if [ "$SUCCESS" = false ]; then
-            echo -e "${RED}无法连接 GitHub。请检查网络。${PLAIN}"
-            exit 1
         fi
         cd "$WORKDIR" || exit
     fi
@@ -173,7 +153,7 @@ EOF
 # --- 主程序 ---
 clear
 echo -e "${BLUE}==========================================${PLAIN}"
-echo -e "${BLUE}    CLIProxyAPI 自动化管理脚本 (v1.5)     ${PLAIN}"
+echo -e "${BLUE}    CLIProxyAPI 自动化管理脚本 (v1.6)     ${PLAIN}"
 echo -e "${BLUE}==========================================${PLAIN}"
 echo "1) 安装 (Install)"
 echo "2) 更新 (Update)"
