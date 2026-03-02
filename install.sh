@@ -57,13 +57,13 @@ do_install() {
     fi
 
     # 交互式参数
-    read -p "请输入服务监听端口 [默认: 28391]: " PORT
+    read -p "请输入服务监听端口 [默认: 28391]: " PORT < /dev/tty
     PORT=${PORT:-28391}
 
-    read -p "请输入 Web 管理密钥 (Secret Key) [默认: admin123]: " SECRET
+    read -p "请输入 Web 管理密钥 (Secret Key) [默认: admin123]: " SECRET < /dev/tty
     SECRET=${SECRET:-admin123}
 
-    read -p "请输入凭据存放目录 (Auth Dir) [默认: $WORKDIR/auths]: " AUTH_DIR
+    read -p "请输入凭据存放目录 (Auth Dir) [默认: $WORKDIR/auths]: " AUTH_DIR < /dev/tty
     AUTH_DIR=${AUTH_DIR:-$WORKDIR/auths}
 
     echo -e "${YELLOW}正在克隆仓库并编译...${PLAIN}"
@@ -147,7 +147,7 @@ echo "1) 安装 (Install)"
 echo "2) 更新 (Update)"
 echo "3) 卸载 (Uninstall)"
 echo "0) 退出"
-read -p "请输入数字 [1-3]: " choice
+read -p "请输入数字 [1-3]: " choice < /dev/tty
 
 case $choice in
     1) do_install ;;
