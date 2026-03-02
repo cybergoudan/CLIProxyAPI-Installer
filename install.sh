@@ -18,6 +18,38 @@ setup_env() {
 }
 setup_env
 
+# --- 系统依赖检查与安装 ---
+ensure_deps() {
+    echo -e "${YELLOW}正在检查系统基础依赖...${PLAIN}"
+    
+    DEPS=("git" "curl" "tar" "ca-certificates")
+    MISSING_DEPS=()
+    
+    for dep in "${DEPS[@]}"; do
+        if ! command -v "$dep" &> /dev/null; then
+            MISSING_DEPS+=("$dep")
+        fi
+    done
+
+    if [ ${#MISSING_DEPS[@]} -eq 0 ]; then
+        echo -e "${GREEN}系统依赖已就绪。${PLAIN}"
+        return 0
+    fi
+
+    echo -e "${YELLOW}缺少依赖: ${MISSING_DEPS[*]}. 正在尝试自动安装...${PLAIN}"
+    
+    if command -v apt-get &> /dev/null; then
+        apt-get update && apt-get install -y "${MISSING_DEPS[@]}"
+    elif command -v dnf &> /dev/null; then
+        dnf install -y "${MISSING_DEPS[@]}"
+    elif command -v yum &> /dev/null; then
+        yum install -y "${MISSING_DEPS[@]}"
+    else
+        echo -e "${RED}无法识别的包管理器，请手动安装: ${MISSING_DEPS[*]}${PLAIN}"
+        exit 1
+    fi
+}
+
 # --- Go 环境检查与自动安装 ---
 ensure_go() {
     if command -v go &> /dev/null; then
@@ -43,6 +75,7 @@ do_uninstall() {
 }
 
 do_update() {
+    ensure_deps
     ensure_go
     if [ ! -d "$WORKDIR" ]; then echo -e "${RED}错误: 未安装${PLAIN}"; exit 1; fi
     cd "$WORKDIR" || exit
@@ -52,6 +85,7 @@ do_update() {
 }
 
 do_install() {
+    ensure_deps
     ensure_go
 
     echo -e "${BLUE}请输入配置信息:${PLAIN}"
@@ -67,12 +101,10 @@ do_install() {
     read AUTH_DIR < /dev/tty
     AUTH_DIR=${AUTH_DIR:-$WORKDIR/auths}
 
-    # 克隆逻辑（增加重试和浅克隆）
     echo -e "${YELLOW}正在克隆代码 (GitHub)...${PLAIN}"
     if [ -d "$WORKDIR" ]; then
         cd "$WORKDIR" && git pull
     else
-        # 尝试最多 3 次
         MAX_RETRIES=3
         COUNT=0
         SUCCESS=false
@@ -89,7 +121,7 @@ do_install() {
         done
 
         if [ "$SUCCESS" = false ]; then
-            echo -e "${RED}无法连接 GitHub。请检查网络，或者尝试配置代理后再运行。${PLAIN}"
+            echo -e "${RED}无法连接 GitHub。请检查网络。${PLAIN}"
             exit 1
         fi
         cd "$WORKDIR" || exit
@@ -141,7 +173,7 @@ EOF
 # --- 主程序 ---
 clear
 echo -e "${BLUE}==========================================${PLAIN}"
-echo -e "${BLUE}    CLIProxyAPI 自动化管理脚本 (v1.4)     ${PLAIN}"
+echo -e "${BLUE}    CLIProxyAPI 自动化管理脚本 (v1.5)     ${PLAIN}"
 echo -e "${BLUE}==========================================${PLAIN}"
 echo "1) 安装 (Install)"
 echo "2) 更新 (Update)"
